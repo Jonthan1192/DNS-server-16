@@ -1,66 +1,33 @@
+https://github.com/Jonthan1192/DNS-server-16.git
 import socket
-import threading
-
-exit_all = False
-
-debug_prints = True
-
-lock = threading.Lock()
-
-
-def safe_prints(to_print):
-    global lock
-    lock.acquire()
-    print(to_print)
-    lock.release()
-
-
-def dns_recv(sock, tid):
-    msg_title = sock.recv(12)
-    msg_question = sock.recv(1)
-    while msg_question[len(msg_question) - 1] != b'\x00':
-        msg_question += sock.recv(msg_question[len(msg_question) - 1] + 1)
-    msg_question += sock.recv(4)
-
-    safe_prints(f"RECEIVED: f{msg_title + msg_question}, from client number {tid}")
-    return msg_title, msg_question
-
-
-def handle_client(s_clint_sock, tid, addr):
-    global exit_all
-    safe_prints(f'new client arrive {tid} {addr}')
-    while not exit_all:
-        msg_title, msg_question = dns_recv(s_clint_sock, tid)
-        if b"MyFakeDomain" not in msg_question:
-            break
-
-    safe_prints(f"Client {tid} Closing")
-    s_clint_sock.close()
 
 
 def main():
-    global exit_all
-    server_socket = socket.socket()
-    server_socket.bind(('0.0.0.0', 53))
-    server_socket.listen(5)
-    threads = []
-    tid = 1
+    server_ip = '0.0.0.0'
+    port = 53
+    default_size = 1024
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    server_socket.bind((server_ip, port))
+    print("Started\n")
     while True:
         try:
-            client_socket, addr = server_socket.accept()
-            t = threading.Thread(target=handle_client, args=(client_socket, tid, addr))
-            t.start()
-            threads.append(t)
-            tid += 1
-        except socket.error as err:
-            print('socket error', err)
-            break
-    exit_all = True
-    for t in threads:
-        t.join()
+            data, addr = server_socket.recvfrom(default_size)
+            if b"Close" in data:
+                break
+            if b"MyFakeDomain" in data:
+                print(f"RECIEVED: {data}, from {addr}")
+                title = data[:2] + b'\x81\x80' + b'\x00\x01' + b'\x00\x01' + b'\x00\x00' + b'\x00\x00'
+                question = data[12:]
+                answer = b'\xc0\x0c' + b'\x00\x01' + b'\x00\x01' + b'\x00\x00\x00\x41' + b'\x00\x04' + b'\x45\x45\x45\x45'
+                response = title + question + answer
+                server_socket.sendto(response, addr)
+                print(f"SENT: {response}, to {addr}")
+
+        except Exception as err:
+            print('error: ', err)
 
     server_socket.close()
-    print('server will die now')
+    print("Closing...")
 
 
 if __name__ == '__main__':
